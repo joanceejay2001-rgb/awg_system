@@ -1,0 +1,27 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+
+# Local env and secrets
+.env
+
+# Runtime data and local databases
+awg_data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and temp artifacts
+*.log
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+
+# Local downloaded binaries/packages
+*.deb
