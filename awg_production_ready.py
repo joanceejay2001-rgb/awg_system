@@ -26,6 +26,7 @@ import sqlite3
 import os
 import hashlib
 import smtplib
+import errno
 from datetime import datetime, timedelta
 from pathlib import Path
 import threading
@@ -39,6 +40,7 @@ from urllib.error import URLError, HTTPError
 try:
     from flask import Flask, jsonify, request, render_template_string, session
     from flask_cors import CORS
+    from werkzeug.serving import make_server
     FLASK_AVAILABLE = True
 except ImportError:
     print("⚠️  Flask not installed. Web dashboard disabled.")
@@ -71,6 +73,48 @@ def load_env_file(env_path: str = ".env"):
 
 # Load local .env values once at startup (if file exists)
 load_env_file()
+
+
+def get_env_int(name: str, default: int) -> int:
+    """Read an integer environment setting with a safe fallback."""
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        print(f"⚠️ Invalid {name}={raw_value!r}; using {default}")
+        return default
+
+
+def start_web_api(app):
+    """Start Flask only after binding a reachable local port."""
+    host = os.getenv("AWG_API_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    preferred_port = get_env_int("AWG_API_PORT", 5000)
+    port_candidates = [preferred_port] + list(range(preferred_port + 1, preferred_port + 20))
+
+    last_error = None
+    for port in port_candidates:
+        try:
+            server = make_server(host, port, app, threaded=True)
+        except OSError as exc:
+            last_error = exc
+            if exc.errno in (errno.EADDRINUSE, errno.EACCES):
+                print(f"⚠️ Port {port} is unavailable; trying {port + 1}")
+                continue
+            raise
+
+        web_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        web_thread.start()
+        display_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+        print(f"\n🌐 Production API running at: http://{display_host}:{port}")
+        return server, web_thread, port
+
+    raise RuntimeError(
+        "Unable to start Production API. Ports "
+        f"{preferred_port}-{preferred_port + 19} are unavailable."
+    ) from last_error
 
 
 # ========== PRODUCTION CONFIGURATION ==========
@@ -138,7 +182,14 @@ class DatabaseManager:
     def _get_connection(self):
         """Create a DB connection based on configured backend"""
         if self.use_postgres:
-            return psycopg2.connect(self.db_url)
+            try:
+                return psycopg2.connect(self.db_url)
+            except psycopg2.OperationalError as exc:
+                raise RuntimeError(
+                    "Unable to connect to PostgreSQL using DATABASE_URL. "
+                    "Start the configured PostgreSQL server, or unset/comment DATABASE_URL "
+                    "to use the local SQLite database for simulator runs."
+                ) from exc
         return sqlite3.connect(self.db_path)
     
     def init_database(self):
@@ -1208,17 +1259,7 @@ if __name__ == "__main__":
     # Start web API if available
     if FLASK_AVAILABLE:
         app = create_production_api(controller)
-        web_thread = threading.Thread(
-            target=lambda: app.run(
-                host="0.0.0.0",
-                port=5000,
-                debug=False,
-                use_reloader=False
-            ),
-            daemon=True
-        )
-        web_thread.start()
-        print("\n🌐 Production API running at: http://localhost:5000")
+        start_web_api(app)
     else:
         print("\n⚠️ Flask not available — Web API disabled")
 

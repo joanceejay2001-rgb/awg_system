@@ -10,7 +10,7 @@ Atmospheric Water Generation (AWG) control service with:
 
 - Python 3.12+
 - Virtual environment at `venv/`
-- Local PostgreSQL (example used here: `localhost:55432`)
+- Local PostgreSQL only if you set `DATABASE_URL` (simulator mode can use SQLite)
 - Optional: `cloudflared` for Wokwi internet bridge
 
 ## 1) Activate Environment
@@ -28,12 +28,15 @@ AWG_MODE=hardware
 DATABASE_URL=postgresql://postgres:postgres@localhost:55432/businessintelligence
 AWG_SENSOR_SOURCE=http
 AWG_SENSOR_HTTP_URL=http://127.0.0.1:8090/latest
+AWG_API_HOST=127.0.0.1
+AWG_API_PORT=5000
 ```
 
 For simulator mode, set:
 
 ```env
 AWG_MODE=simulator
+# Leave DATABASE_URL unset/commented to use awg_production.db via SQLite.
 ```
 
 ## 3) Start Bridge Service (for Wokwi/ESP32)
@@ -74,6 +77,8 @@ API:
 
 Dashboard:
 - `http://127.0.0.1:5000/`
+
+If port `5000` is already in use, the service prints the alternate port it selected, for example `http://127.0.0.1:5001/`.
 
 ## Wokwi Notes
 
