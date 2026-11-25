@@ -12,9 +12,33 @@ Atmospheric Water Generation (AWG) control service with:
 - Local PostgreSQL only if you set `DATABASE_URL` (simulator mode can use SQLite)
 - Optional: `cloudflared` for Wokwi internet bridge
 
+On Windows, use **PowerShell** (Windows PowerShell 5.1 or PowerShell 7) or **Command Prompt** (`cmd.exe`). Install [Git for Windows](https://git-scm.com/downloads/win) and [Python](https://www.python.org/downloads/windows/), then open a new terminal so the commands are available. Check `git --version` and `py -3 --version`; Python must be 3.12 or newer. Use the blocks labeled for your shell throughout this guide.
+
 ## 1) Clone and Install
 
-The commands below use Bash on Linux or macOS. Run the first block from the directory where you want to keep the project:
+Choose the block for your operating system. Run it from the directory where you want to keep the project.
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/joanceejay2001-rgb/awg_system.git
+Set-Location awg_system
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+### Windows (Command Prompt)
+
+```bat
+git clone https://github.com/joanceejay2001-rgb/awg_system.git
+cd /d awg_system
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+In either Windows shell, if `py` is unavailable but `python --version` shows Python 3.12 or newer, use `python -m venv .venv` for the third command.
+
+### Linux / macOS (Bash)
 
 ```bash
 git clone https://github.com/joanceejay2001-rgb/awg_system.git
@@ -25,22 +49,40 @@ python3 -m venv .venv
 
 If you already cloned the repository, open a terminal in that checkout and skip the first two commands. The project folder can have any name.
 
-For each additional terminal, open it inside the checkout. `cd "$(git rev-parse --show-toplevel)"` returns to the repository root even from a subfolder. Always run the services there: `.env`, `awg_production.db`, and `awg_data/hardware_sensors.json` are resolved relative to the working directory. Using `.venv/bin/python` also avoids having to activate the environment in every terminal.
+### Working directory and Python environment
 
-On Windows PowerShell, create the environment with `py -3 -m venv .venv` and use `.\.venv\Scripts\python.exe` instead of `.venv/bin/python`. Return to the root with `Set-Location (git rev-parse --show-toplevel)` instead of the Bash `cd` command.
+For each additional terminal, open it inside the checkout. The root command at the start of each launch block also works from a subfolder, including paths containing spaces. Always run the services at the repository root: `.env`, `awg_production.db`, and `awg_data/hardware_sensors.json` are resolved relative to the working directory.
+
+The Command Prompt blocks are for pasting into an interactive `cmd.exe` window. If you put them in a `.bat` file, change `%R` to `%%R` in the `for` commands, as described in the [Microsoft `for` reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/for).
+
+Each command uses the virtual environment's Python directly, so activation is unnecessary. On Windows, you can run these commands without changing PowerShell's execution policy. If you move the checkout or switch operating systems, recreate `.venv` and install the requirements again. See the [Python virtual environment documentation](https://docs.python.org/3/library/venv.html).
 
 ## 2) Configure Environment
 
 Copy the supplied configuration without overwriting an existing `.env`:
+
+Windows (PowerShell):
+
+```powershell
+Set-Location -LiteralPath (git rev-parse --show-toplevel)
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Windows (Command Prompt):
+
+```bat
+for /f "delims=" %R in ('git rev-parse --show-toplevel') do cd /d "%R"
+if not exist .env copy .env.example .env
+```
+
+Linux / macOS (Bash):
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
 test -f .env || cp .env.example .env
 ```
 
-On Windows PowerShell, use `if (-not (Test-Path .env)) { Copy-Item .env.example .env }` from the repository root.
-
-The supplied configuration starts in simulator mode with SQLite and needs no PostgreSQL setup. To use Wokwi/ESP32 telemetry, edit `.env` to set:
+The supplied configuration starts in simulator mode with SQLite and needs no PostgreSQL setup. To use Wokwi/ESP32 telemetry, open `.env` in a text editor and set the following values. These are file contents, not terminal commands:
 
 ```env
 AWG_MODE=hardware
@@ -61,12 +103,43 @@ Set `DATABASE_URL` only if you have a running PostgreSQL server and use its actu
 
 ## 3) Start Bridge Service (for Wokwi/ESP32)
 
+Windows (PowerShell):
+
+```powershell
+Set-Location -LiteralPath (git rev-parse --show-toplevel)
+.\.venv\Scripts\python.exe bridge_server.py
+```
+
+Windows (Command Prompt):
+
+```bat
+for /f "delims=" %R in ('git rev-parse --show-toplevel') do cd /d "%R"
+.\.venv\Scripts\python.exe bridge_server.py
+```
+
+Linux / macOS (Bash):
+
 ```bash
 cd "$(git rev-parse --show-toplevel)"
 .venv/bin/python bridge_server.py
 ```
 
-Health check:
+Keep the bridge running and check its health in another terminal.
+
+Windows (PowerShell), using [Invoke-RestMethod](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-restmethod?view=powershell-5.1):
+
+```powershell
+Invoke-RestMethod -UseBasicParsing -Uri http://127.0.0.1:8090/health
+```
+
+Windows (Command Prompt), from inside the checkout:
+
+```bat
+for /f "delims=" %R in ('git rev-parse --show-toplevel') do cd /d "%R"
+.\.venv\Scripts\python.exe -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8090/health').read().decode())"
+```
+
+Linux / macOS (Bash):
 
 ```bash
 curl http://127.0.0.1:8090/health
@@ -74,7 +147,9 @@ curl http://127.0.0.1:8090/health
 
 ## 4) Expose Bridge to Wokwi (Optional)
 
-```bash
+Install `cloudflared` using the [Cloudflare download instructions](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/) and make sure `cloudflared --version` works in a new terminal. With the bridge still running, run this command in another terminal. It is the same in PowerShell, Command Prompt, and Bash:
+
+```text
 cloudflared tunnel --url http://127.0.0.1:8090
 ```
 
@@ -86,12 +161,30 @@ const char* BRIDGE_INGEST_URL = "https://YOUR-URL.trycloudflare.com/ingest";
 
 ## 5) Start AWG Service
 
+Windows (PowerShell):
+
+```powershell
+Set-Location -LiteralPath (git rev-parse --show-toplevel)
+.\.venv\Scripts\python.exe awg_production_ready.py
+```
+
+Windows (Command Prompt):
+
+```bat
+for /f "delims=" %R in ('git rev-parse --show-toplevel') do cd /d "%R"
+.\.venv\Scripts\python.exe awg_production_ready.py
+```
+
+Linux / macOS (Bash):
+
 ```bash
 cd "$(git rev-parse --show-toplevel)"
 .venv/bin/python awg_production_ready.py
 ```
 
 For simulator mode, this is the only service you need; skip the bridge and tunnel steps.
+
+Keep the terminal open while using the dashboard. Press `Ctrl+C` in each service terminal to stop it.
 
 API:
 - `http://127.0.0.1:5000/api/status`
@@ -115,8 +208,12 @@ ArduinoJson
 
 ## Suggested Run Order (3 terminals)
 
-Open each terminal inside the checkout and return to the root with `cd "$(git rev-parse --show-toplevel)"` first.
+For Wokwi, open each terminal at the repository root. If you are in a subfolder, use the root command for your shell from the launch blocks above first.
 
-1. `.venv/bin/python bridge_server.py`
-2. `cloudflared tunnel --url http://127.0.0.1:8090`
-3. `.venv/bin/python awg_production_ready.py`
+The Windows launch commands are the same in PowerShell and Command Prompt.
+
+| Terminal | Windows (PowerShell or Command Prompt) | Linux / macOS (Bash) |
+| --- | --- | --- |
+| 1: Bridge | `.\.venv\Scripts\python.exe bridge_server.py` | `.venv/bin/python bridge_server.py` |
+| 2: Tunnel | `cloudflared tunnel --url http://127.0.0.1:8090` | `cloudflared tunnel --url http://127.0.0.1:8090` |
+| 3: AWG | `.\.venv\Scripts\python.exe awg_production_ready.py` | `.venv/bin/python awg_production_ready.py` |
